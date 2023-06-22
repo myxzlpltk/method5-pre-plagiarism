@@ -8,8 +8,7 @@ WORKDIR /code
 COPY ./requirements.txt /code/requirements.txt
 
 # Install dependencies with caching
-RUN --mount=type=cache,target=/root/.cache \
-	pip install -r /code/requirements.txt
+RUN pip install -r /code/requirements.txt
 
 # Copy the app
 COPY ./app /code/app
