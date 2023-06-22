@@ -2,10 +2,10 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
 from google.cloud import storage, firestore
 from google.oauth2 import service_account
-from model import PubSubRequest, Document
 from google.oauth2 import id_token
 from fastapi.middleware.cors import CORSMiddleware
-import method5
+from app.model import Document, PubSubRequest
+import app.method5
 import base64
 import json
 import os
