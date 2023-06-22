@@ -6,16 +6,12 @@ import string
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
 from keras.models import load_model
-import tensorflow as tf
 
 # Define system variable
-print("Loading ML model...", end=' ')
-model = load_model("keras_Model.h5", compile=False)  # Load the model
-class_names = open("labels.txt", "r").readlines()  # Load the labels
+model = load_model(os.getenv("MODEL_PATH"), compile=False)  # Load the model
+class_names = open(os.getenv("LABEL_PATH"), "r").readlines()  # Load the labels
 chars = list(string.digits + string.ascii_letters)  # Get list possible character
 fontsize, dim = 175, 224  # Set dimensions
-print("[Completed]")
-
 
 # Define reusable function
 def char_in_font(unicode_char, font):
@@ -50,7 +46,7 @@ def draw_char(char, font_path, font_name):
     # Load the image into the array
     return normalized_image_array
 
-def compute(pdf_file):
+def compute_method5(pdf_file):
     # Open file
     pdf = fitz.open(pdf_file)
     data = {

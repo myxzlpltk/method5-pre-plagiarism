@@ -1,0 +1,7 @@
+services:
+  method5:
+    build: .
+    env_file: .env
+    image: method5/latest
+    ports:
+      - "80:80"
