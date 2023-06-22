@@ -3,7 +3,6 @@ numpy
 pillow
 fonttools
 fastapi[all]
-easyocr
 google-cloud-storage
 google-cloud-firestore
 google-auth
