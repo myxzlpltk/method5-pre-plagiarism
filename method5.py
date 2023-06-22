@@ -1,33 +1,20 @@
 import os
-
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-
-import collections
-import easyocr
+import tempfile
 import fitz
-import hashlib
 import numpy as np
 import string
-import time
-import redis
-import json
-from minio import Minio
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
+from keras.models import load_model
+import tensorflow as tf
 
 # Define system variable
-print("Loading OCR model...", end=' ')
-reader = easyocr.Reader([], gpu=True)  # OCR tool
+print("Loading ML model...", end=' ')
+model = load_model("keras_Model.h5", compile=False)  # Load the model
+class_names = open("labels.txt", "r").readlines()  # Load the labels
 chars = list(string.digits + string.ascii_letters)  # Get list possible character
+fontsize, dim = 175, 224  # Set dimensions
 print("[Completed]")
-
-client = Minio(
-    endpoint="host.docker.internal:9000",
-    secure=False,
-    access_key="p8bBrkOUX3JXTDus",
-    secret_key="rimJyqs5zNrNhj55nmU6wEVga6SUUkRD",
-)
-print("Minio connected,", "bucket found" if client.bucket_exists("documents") else "bucket not found")
 
 
 # Define reusable function
@@ -42,32 +29,30 @@ def char_in_font(unicode_char, font):
     return False
 
 
-def draw_char(char, typeface, size):
+def draw_char(char, font_path, font_name):
     # Set canvas size
-    W, H = (int(size * 1.5) * 3, size)
+    W, H = dim, dim
     # Set font
-    font = ImageFont.truetype(typeface, size)
+    font = ImageFont.truetype(font_path, fontsize)
     # Make empty image
-    img = Image.new('RGB', (W, H), color='#969696')
+    image = Image.new('RGB', (W, H), color='white')
     # Draw text to image
-    draw = ImageDraw.Draw(img)
+    draw = ImageDraw.Draw(image)
     _, _, w, h = font.getbbox(char)
-    draw.text(((W - w) / 2, (H - h) / 2 - size / 8), char, fill='#696969', font=font)
+    draw.text(((W-w)/2, ((H-h)/2)-dim/17), char, 0, font=font)
 
-    return np.asarray(img)
+    # turn the image into a numpy array
+    image_array = np.asarray(image)
 
+    # Normalize the image
+    normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
 
-def generate_text(_char):
-    return _char * 4
+    # Load the image into the array
+    return normalized_image_array
 
-
-def compute(pdfname):
-    # Download file from Minio
-    pdfpath = "tmps/" + pdfname
-    client.fget_object("documents", pdfname, pdfpath)
-
+def compute(pdf_file):
     # Open file
-    pdf = fitz.open(pdfpath)
+    pdf = fitz.open(pdf_file)
     data = {
         'fonts': {},
         'pages': [],
@@ -86,20 +71,19 @@ def compute(pdfname):
         # If font is embedded
         if ext == 'ttf':
             # Write fonts
-            filename = hashlib.md5(name.encode('utf-8')).hexdigest() + '.' + ext  # Generate filename
-            f = open('tmps/' + filename, 'wb')  # Open file
+            f = tempfile.NamedTemporaryFile(suffix=ext, delete=False)  # Open file
             f.write(content)  # Write content
-            f.close()  # Close file
+            f.close() # Close temporary file
 
             # Append to array
-            embedded_fonts.append((filename, name))
+            embedded_fonts.append((f.name, name))
 
     # Setup problematic font map
     hashmap = {}
 
     # Loop through embedded fonts
     for filename, fontname in embedded_fonts:
-        font = TTFont('tmps/' + filename)
+        font = TTFont(filename)
         hashmap[fontname] = {}
 
         # Loop through characters
@@ -108,18 +92,16 @@ def compute(pdfname):
                 continue
 
             # Render characters
-            img = draw_char(generate_text(char), 'tmps/' + filename, 250)
+            input = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+            input[0] = draw_char(char, filename, fontname)
             # Detect characters with OCR
-            result = reader.readtext(img, allowlist=chars)
+            prediction = model.predict(input, verbose=0)
+            index = np.argmax(prediction)
+            class_name = class_names[index].strip()
 
             # If character detected
-            if len(result) > 0:
-                # Calculate most character appear
-                most_char, total = collections.Counter(result[0][1]).most_common(1)[0]
-                # If char not the same
-                if most_char.lower() != char.lower():
-                    # Add to hash map
-                    hashmap[fontname][char] = True
+            if class_name != char:
+                hashmap[fontname][char] = True
 
         if len(hashmap[fontname].keys()) == 0:
             del hashmap[fontname]
@@ -164,37 +146,8 @@ def compute(pdfname):
     pdf.close()
 
     # Delete file
-    os.remove(pdfpath)
     for filename, fontname in embedded_fonts:
-        os.remove('tmps/' + filename)
+        if os.path.exists(filename):
+            os.unlink(filename)
 
-    return {
-        'filename': pdfname,
-        'data': data
-    }
-
-
-# Redis
-r = redis.StrictRedis(host='host.docker.internal', port=6379, db=0)
-p = r.pubsub()
-p.subscribe('documents')
-print('Redis connected')
-
-while True:
-    message = p.get_message()
-    if message and message['type'] == 'message':
-        start = time.time()
-        filename = message['data'].decode('utf-8')
-        print('Working on', filename, end=' ')
-
-        try:
-            result = compute(filename)
-            r.publish('result', json.dumps(result))
-            end = time.time()
-            print('[', end - start, 'seconds]')
-        except Exception as e:
-            print('[Error]')
-            print(e)
-            r.publish('error', filename)
-
-    time.sleep(1)
+    return data
