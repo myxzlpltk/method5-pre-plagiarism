@@ -85,6 +85,9 @@ def process(req: PubSubRequest, user: any = Depends(verify_token)):
     doc_ref = firestore_client.collection(f"users/{document.email}/documents").document(document.id)
     doc_ref.update({"status": "invalid" if len(data["pages"]) > 0 else "valid"})
 
+    user_ref = firestore_client.collection(f"users").document(document.email)
+    user_ref.update({"idle": True, "jobCreatedAt": None})
+
     # Clean up temporary file
     if os.path.exists(pdf_file.name):
         os.unlink(pdf_file.name)
