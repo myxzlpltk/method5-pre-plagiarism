@@ -1,0 +1,7 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - 'build'
+      - '-t'
+      - 'us-east1-docker.pkg.dev/siberpunk/method5/method5-service'
+      - '.'

@@ -1,5 +1,10 @@
 # Use python image
 FROM python:3.10-slim
+ENV PYTHONUNBUFFERED=1 \
+	PYTHONDONTWRITEBYTECODE=1 \
+	PIP_NO_CACHE_DIR=off \
+	PIP_DISABLE_PIP_VERSION_CHECK=on \
+	PIP_DEFAULT_TIMEOUT=100
 
 # Set working directory
 WORKDIR /code
